@@ -1,26 +1,21 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, Image, Platform, View, Text, Button, TouchableOpacity } from 'react-native';
 import React, { useState, useEffect, useRef } from 'react';
+import * as tf from '@tensorflow/tfjs';
 
-import { Collapsible } from '@/components/Collapsible';
-import { ExternalLink } from '@/components/ExternalLink';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import Constants from 'expo-constants';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
-
-
 
 
 export default function TabTwoScreen() {
   const [facing, setFacing] = useState<CameraType>('back');
-  const [hasCameraPermission, setHasCameraPermission] = useState(null);
   const cameraRef = useRef(null);
   const [permission, requestPermission] = useCameraPermissions();
 
+  let [model, setModel] = useState(tf.GraphModel<string | any >);
+  const [predictions, setPredictions] = useState([]);
 
-  
+
+
   if (!permission) {
     // Camera permissions are still loading.
     return <View />;
@@ -35,6 +30,23 @@ export default function TabTwoScreen() {
       </View>
     );
   }
+
+  useEffect(() => {
+    (async () => {
+      // Ensure TensorFlow is ready
+      await tf.ready();
+
+      const URL = "https://teachablemachine.withgoogle.com/models/DpUtnaiyW/";
+
+      const modelURL = URL + "model.json";
+      const metadataURL = URL + "metadata.json";
+
+       // Load the model using the URIs
+       const model = await ts.loadGraphModel(modelURL, metadataURL);
+
+      setModel(model);
+    })();
+  }, []);
 
   function toggleCameraFacing() {
     setFacing(current => (current === 'back' ? 'front' : 'back'));
