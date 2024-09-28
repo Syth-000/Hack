@@ -117,36 +117,33 @@ const App = () => {
     const modelURL = URL + "model.json";
     const metadataURL = URL + "metadata.json";
 
-    try {
+   
       // Load the model and metadata
       const loadedModel = await window.tmPose.load(modelURL, metadataURL);
       setModel(loadedModel);
       setMaxPredictions(loadedModel.getTotalClasses());
 
-      // Setup webcam
-      const size = 200;
-      const flip = true;
-      const loadedWebcam = new window.tmPose.Webcam(size, size, flip);
-      await loadedWebcam.setup();
-      await loadedWebcam.play();
-      setWebcam(loadedWebcam);
-
-      // Start prediction loop
-      window.requestAnimationFrame(loop);
-
-      // Setup label container
-      const labelContainer = labelContainerRef.current;
-      for (let i = 0; i < loadedModel.getTotalClasses(); i++) {
-        labelContainer.appendChild(document.createElement("div"));
+      try{
+        // Setup webcam
+        const size = 200;
+        const flip = true;
+        const loadedWebcam = new window.tmPose.Webcam(size, size, flip);
+        await loadedWebcam.setup();
+        await loadedWebcam.play();
+        setWebcam(loadedWebcam);
+    
+        // Start prediction loop
+        window.requestAnimationFrame(loop);
+    
+        // Setup label container
+        const labelContainer = labelContainerRef.current;
+        for (let i = 0; i < loadedModel.getTotalClasses(); i++) {
+          labelContainer.appendChild(document.createElement("div"));
+        }
+      }catch(e){
+        console.log(e);
       }
-
-      setWebcamError(false);
-    } catch (error) {
-      console.error("Error initializing webcam:", error);
-      setWebcamError(true);
-      drawFallbackCanvas();
-    }
-  };
+      };
 
   const drawFallbackCanvas = () => {
     const canvas = canvasRef.current;
