@@ -1,10 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Route, Link, Routes } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Timer, List, Camera } from 'lucide-react';
+import { Timer, List } from 'lucide-react';
 
-// Teachable Machine model URL
-const URL = "https://teachablemachine.withgoogle.com/models/DpUtnaiyW/";
 
 const FocusButton = ({ onToggle, isActive }) => (
   <button
@@ -14,7 +12,7 @@ const FocusButton = ({ onToggle, isActive }) => (
         ? "bg-gray-500 hover:bg-gray-600 text-white"
         : "bg-amber-700 hover:bg-amber-800 text-white"
     }`}
-  >
+    >
     {isActive ? "Stop Focus" : "Start Focus"}
   </button>
 );
@@ -27,17 +25,6 @@ const FocusTimer = ({ time }) => (
     className="text-4xl font-bold text-amber-800 mb-8"
   >
     {new Date(time * 1000).toISOString().substr(11, 8)}
-  </motion.div>
-);
-
-const ErrorMessage = ({ message }) => (
-  <motion.div
-    initial={{ opacity: 0, y: -50 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -50 }}
-    className="text-red-600 font-bold mt-4"
-  >
-    {message}
   </motion.div>
 );
 
@@ -54,45 +41,35 @@ const Scoreboard = ({ scores }) => (
   </div>
 );
 
-const Home = ({ onToggle, time, isActive, webcamError }) => {
-  const canvasRef = useRef(null);
-  const labelContainerRef = useRef(null);
+const Home = ({ onToggle, time, isActive }) => (
+  <div className="flex flex-col items-center justify-center h-screen bg-amber-100">
+    <AnimatePresence>
+      {isActive && <FocusTimer time={time} />}
+    </AnimatePresence>
+    <FocusButton onToggle={onToggle} isActive={isActive} />
 
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-amber-100">
-      <div className="mb-8 text-2xl font-bold text-amber-800">Teachable Machine Pose Model</div>
-      <AnimatePresence>
-        {isActive && <FocusTimer time={time} />}
-      </AnimatePresence>
-      <FocusButton onToggle={onToggle} isActive={isActive} />
-      <div className="mt-8 relative">
-        <canvas ref={canvasRef} width="200" height="200" className="bg-gray-300"></canvas>
-        {webcamError && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Camera size={48} color="#4B5563" />
-          </div>
-        )}
-      </div>
-      <div ref={labelContainerRef} className="mt-4 text-amber-800"></div>
-      <AnimatePresence>
-        {webcamError && <ErrorMessage message="Camera not working" />}
-      </AnimatePresence>
+    {isActive && ( 
+    <div className="mt-8 relative">
+    <div><canvas id="canvas"></canvas></div>
+    <div id="label-container"></div>
     </div>
-  );
-};
+    )}
+
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
+  </div>
+);
 
 const App = () => {
   const [time, setTime] = useState(0);
   const [isActive, setIsActive] = useState(false);
   const [scores, setScores] = useState([]);
   const [focusValue, setFocusValue] = useState(1);
-  const [model, setModel] = useState(null);
-  const [webcam, setWebcam] = useState(null);
-  const [maxPredictions, setMaxPredictions] = useState(0);
-  const [webcamError, setWebcamError] = useState(false);
 
-  const canvasRef = useRef(null);
-  const labelContainerRef = useRef(null);
+  const URL = "https://teachablemachine.withgoogle.com/models/DpUtnaiyW/";
+
+  let model, webcam, ctx, labelContainer, maxPredictions;
 
   useEffect(() => {
     // Load TensorFlow.js and Teachable Machine Pose libraries
@@ -114,81 +91,79 @@ const App = () => {
   };
 
   const init = async () => {
-    const modelURL = URL + "model.json";
-    const metadataURL = URL + "metadata.json";
+        const modelURL = URL + "model.json";
+        const metadataURL = URL + "metadata.json";
 
-   
-      // Load the model and metadata
-      const loadedModel = await window.tmPose.load(modelURL, metadataURL);
-      setModel(loadedModel);
-      setMaxPredictions(loadedModel.getTotalClasses());
+        // load the model and metadata
+        // Refer to tmImage.loadFromFiles() in the API to support files from a file picker
+        // Note: the pose library adds a tmPose object to your window (window.tmPose)
+        model = await window.tmPose.load(modelURL, metadataURL);
+        maxPredictions = model.getTotalClasses();
 
-      try{
-        // Setup webcam
+        // Convenience function to setup a webcam
         const size = 200;
-        const flip = true;
-        const loadedWebcam = new window.tmPose.Webcam(size, size, flip);
-        await loadedWebcam.setup();
-        await loadedWebcam.play();
-        setWebcam(loadedWebcam);
-    
-        // Start prediction loop
+        const flip = true; // whether to flip the webcam
+        webcam = new window.tmPose.Webcam(size, size, flip); // width, height, flip
+        
+        const canvas = document.getElementById("canvas");
+        canvas.width = size; canvas.height = size;
+
+        // display empty canves if camera doesnt work
+        try{
+
+        await webcam.setup(); // request access to the webcam
+        await webcam.play();
         window.requestAnimationFrame(loop);
-    
-        // Setup label container
-        const labelContainer = labelContainerRef.current;
-        for (let i = 0; i < loadedModel.getTotalClasses(); i++) {
-          labelContainer.appendChild(document.createElement("div"));
+
+        // append/get elements to the DOM
+        
+        ctx = canvas.getContext("2d");
+        labelContainer = document.getElementById("label-container");
+        for (let i = 0; i < maxPredictions; i++) { // and class labels
+            labelContainer.appendChild(document.createElement("div"));
         }
       }catch(e){
-        console.log(e);
-      }
-      };
-
-  const drawFallbackCanvas = () => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#D1D5DB";  // A light gray color
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-  };
-
-  const loop = async (timestamp) => {
-    if (webcam) {
-      webcam.update();
-      await predict();
-      window.requestAnimationFrame(loop);
-    }
-  };
-
-  const predict = async () => {
-    if (model && webcam) {
-      const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
-      const prediction = await model.predict(posenetOutput);
-
-      const labelContainer = labelContainerRef.current;
-      for (let i = 0; i < maxPredictions; i++) {
-        const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
-        labelContainer.childNodes[i].innerHTML = classPrediction;
-      }
-
-      drawPose(pose);
-    }
-  };
-
-  const drawPose = (pose) => {
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (webcam && webcam.canvas) {
-      ctx.drawImage(webcam.canvas, 0, 0);
-      if (pose) {
-        const minPartConfidence = 0.5;
-        window.tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
-        window.tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
+        ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#D1D5DB";  // A light gray color
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
       }
     }
-  };
+
+    async function loop(timestamp) {
+        webcam.update(); // update the webcam frame
+        await predict();
+        window.requestAnimationFrame(loop);
+    }
+
+    async function predict() {
+        // Prediction #1: run input through posenet
+        // estimatePose can take in an image, video or canvas html element
+        const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
+        // Prediction 2: run input through teachable machine classification model
+        const prediction = await model.predict(posenetOutput);
+
+        for (let i = 0; i < maxPredictions; i++) {
+            const classPrediction =
+                prediction[i].className + ": " + prediction[i].probability.toFixed(2);
+            labelContainer.childNodes[i].innerHTML = classPrediction;
+        }
+
+        // finally draw the poses
+        drawPose(pose);
+    }
+
+    function drawPose(pose) {
+        if (webcam.canvas) {
+            ctx.drawImage(webcam.canvas, 0, 0);
+            // draw the keypoints and skeleton
+            if (pose) {
+                const minPartConfidence = 0.5;
+                window.tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
+                window.tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
+            }
+        }
+    }
 
   useEffect(() => {
     let interval = null;
@@ -201,15 +176,18 @@ const App = () => {
       if (scores.length === 0 || time > Math.max(...scores)) {
         setScores([...scores, time].sort((a, b) => b - a));
       }
+      setTime(0);
     }
     return () => clearInterval(interval);
   }, [isActive, time, scores, focusValue]);
 
+
+  // toggle timer
   const toggleFocus = () => {
     if (isActive) {
       setIsActive(false);
       setTime(0);  // Reset the timer when stopping
-      if (webcam) {
+      if (false) {
         webcam.stop();
       }
     } else {
@@ -218,6 +196,14 @@ const App = () => {
       init();
     }
   };
+
+  // Simulating focus change (you would replace this with actual focus detection)
+  useEffect(() => {
+    const focusCheck = setInterval(() => {
+      setFocusValue(Math.random());
+    }, 5000);
+    return () => clearInterval(focusCheck);
+  }, []);
 
   useEffect(() => {
     if (focusValue === 0) {
@@ -244,7 +230,7 @@ const App = () => {
         </nav>
 
         <Routes>
-          <Route path="/" element={<Home onToggle={toggleFocus} time={time} isActive={isActive} webcamError={webcamError} />} />
+          <Route path="/" element={<Home onToggle={toggleFocus} time={time} isActive={isActive} />} />
           <Route path="/scoreboard" element={<Scoreboard scores={scores} />} />
         </Routes>
       </div>
