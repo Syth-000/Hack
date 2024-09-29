@@ -153,6 +153,8 @@ const App = () => {
     }
 
     async function predict() {
+      var start = 0;
+      var timer = 30;
         // Prediction #1: run input through posenet
         // estimatePose can take in an image, video or canvas html element
         const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
@@ -163,10 +165,23 @@ const App = () => {
             const classPrediction =
                 prediction[i].className + ": " + prediction[i].probability.toFixed(2);
             labelContainer.childNodes[i].innerHTML = classPrediction;
-        }
+
+            if(prediction[i].probability.toFixed(2) === 0){
+              setTimeout(start++, 1000);
+            } else{
+              start =0;
+            }
+
+            if(start === timer){
+              setFocusValue(0);
+              start = 0;
+            }
 
         // finally draw the poses
         drawPose(pose);
+          }
+
+       
     }
 
     function drawPose(pose) {
@@ -203,7 +218,7 @@ const App = () => {
     if (isActive) {
       setIsActive(false);
       setTime(0);  // Reset the timer when stopping
-      if (false) {
+      if (webcam) {
         webcam.stop();
       }
     } else {
