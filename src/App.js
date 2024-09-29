@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect , useRef} from 'react';
 import { BrowserRouter as Router, Route, Link, Routes } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Timer, List } from 'lucide-react';
+import { Timer, List } from 'lucide-react'
 
 
 const FocusButton = ({ onToggle, isActive }) => (
@@ -17,18 +17,22 @@ const FocusButton = ({ onToggle, isActive }) => (
   </button>
 );
 
-const FocusTimer = ({ time }) => (
+const FocusTimer = ({ time, isWarning }) => (
   <motion.div
     initial={{ opacity: 0, y: -50 }}
     animate={{ opacity: 1, y: 0 }}
     exit={{ opacity: 0, y: -50 }}
-    className="text-4xl font-bold text-amber-800 mb-8"
+    className={`text-4xl font-bold mb-8 ${
+      isWarning ? 'text-red-600 animate-pulse' : 'text-amber-800'
+    }`}
   >
     {new Date(time * 1000).toISOString().substr(11, 8)}
   </motion.div>
 );
 
-const Scoreboard = ({ scores }) => (
+
+
+const Scoreboard = ({ scores, isActive, isWarning }) => (
   <div className="bg-amber-50 p-6 rounded-lg shadow-md">
     <h2 className="text-2xl font-bold mb-4 text-amber-800">Scoreboard</h2>
     <ul>
@@ -80,6 +84,10 @@ const App = () => {
   const [scores, setScores] = useState([]);
   const [focusValue, setFocusValue] = useState(1);
   const [webcamError, setWebcamError] = useState(false);
+  const [unfocusedTime, setUnfocusedTime] = useState(0);
+  const [isWarning, setIsWarning] = useState(false);
+  const focusTimeoutIdRef = useRef(null);
+  const unfocusedStartTimeRef = useRef(null);
 
 
   const URL = "https://teachablemachine.withgoogle.com/models/DpUtnaiyW/";
@@ -147,126 +155,139 @@ const App = () => {
     }
 
     async function loop(timestamp) {
-        webcam.update(); // update the webcam frame
-        await predict();
-        window.requestAnimationFrame(loop);
+      webcam.update();
+      await predict();
+      window.requestAnimationFrame(loop);
     }
-
+  
     async function predict() {
-      var start = 0;
-      var timer = 30;
-        // Prediction #1: run input through posenet
-        // estimatePose can take in an image, video or canvas html element
-        const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
-        // Prediction 2: run input through teachable machine classification model
-        const prediction = await model.predict(posenetOutput);
-
-        for (let i = 0; i < maxPredictions; i++) {
-            const classPrediction =
-                prediction[i].className + ": " + prediction[i].probability.toFixed(2);
-            labelContainer.childNodes[i].innerHTML = classPrediction;
-
-            if(prediction[i].probability.toFixed(2) === 0){
-              setTimeout(start++, 1000);
-            } else{
-              start =0;
-            }
-
-            if(start === timer){
-              setFocusValue(0);
-              start = 0;
-            }
-
-        // finally draw the poses
-        drawPose(pose);
-          }
-
-       
-    }
-
-    function drawPose(pose) {
-        if (webcam.canvas) {
-            ctx.drawImage(webcam.canvas, 0, 0);
-            // draw the keypoints and skeleton
-            if (pose) {
-                const minPartConfidence = 0.5;
-                window.tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
-                window.tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
-            }
+      const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
+      const prediction = await model.predict(posenetOutput);
+  
+      for (let i = 0; i < maxPredictions; i++) {
+        const classPrediction =
+          prediction[i].className + ": " + prediction[i].probability.toFixed(2);
+        labelContainer.childNodes[i].innerHTML = classPrediction;
+      }
+  
+      if (prediction[1].probability >= 0.7) {
+        if (!unfocusedStartTimeRef.current) {
+          unfocusedStartTimeRef.current = Date.now();
         }
-    }
-
-  useEffect(() => {
-    let interval = null;
-    if (isActive && focusValue > 0) {
-      interval = setInterval(() => {
-        setTime((time) => time + 1);
-      }, 1000);
-    } else if (!isActive && time !== 0) {
-      clearInterval(interval);
-      if (scores.length === 0 || time > Math.max(...scores)) {
-        setScores([...scores, time].sort((a, b) => b - a));
+        const currentUnfocusedTime = Math.floor((Date.now() - unfocusedStartTimeRef.current) / 1000);
+        setUnfocusedTime(currentUnfocusedTime);
+  
+        if (currentUnfocusedTime >= 20 && currentUnfocusedTime < 30) {
+          console.log("Warning: You've been unfocused for 20 seconds");
+          setIsWarning(true);
+        } else if (currentUnfocusedTime >= 30) {
+          console.log("You've been unfocused for 30 seconds. Resetting focus value.");
+          setFocusValue(0);
+          setIsActive(false);
+          saveScore();
+        }
+      } else {
+        console.log("You're focused!");
+        unfocusedStartTimeRef.current = null;
+        setUnfocusedTime(0);
+        setIsWarning(false);
       }
-      setTime(0);
+  
+      drawPose(pose);
     }
-    return () => clearInterval(interval);
-  }, [isActive, time, scores, focusValue]);
-
-
-  // toggle timer
-  const toggleFocus = () => {
-    if (isActive) {
-      setIsActive(false);
-      setTime(0);  // Reset the timer when stopping
-      if (webcam) {
-        webcam.stop();
+  
+    function drawPose(pose) {
+      if (webcam.canvas) {
+        ctx.drawImage(webcam.canvas, 0, 0);
+        if (pose) {
+          const minPartConfidence = 0.5;
+          window.tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
+          window.tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
+        }
       }
-    } else {
-      setIsActive(true);
-      setFocusValue(1);
-      init();
     }
+  
+    useEffect(() => {
+      let interval = null;
+      if (isActive && focusValue > 0) {
+        interval = setInterval(() => {
+          setTime((time) => time + 1);
+        }, 1000);
+      } else if (!isActive && time !== 0) {
+        clearInterval(interval);
+        saveScore();
+        setTime(0);
+      }
+      return () => clearInterval(interval);
+    }, [isActive, time, focusValue]);
+  
+    const toggleFocus = () => {
+      if (isActive) {
+        setIsActive(false);
+        setTime(0);
+        if (webcam) {
+          webcam.stop();
+        }
+      } else {
+        setIsActive(true);
+        setFocusValue(1);
+        init();
+      }
+    };
+  
+   
+  const saveScore = () => {
+    const endTime = new Date().toLocaleTimeString();
+    const newScore = { time, endTime };
+    
+    // Read existing scores from local storage
+    const existingScores = JSON.parse(localStorage.getItem('focusScores') || '[]');
+    
+    // Add new score and sort
+    const updatedScores = [...existingScores, newScore].sort((a, b) => b.time - a.time);
+    
+    // Save updated scores back to local storage
+    localStorage.setItem('focusScores', JSON.stringify(updatedScores));
+    
+    console.log('Saved scores to local storage:', updatedScores);
   };
-
-  // Simulating focus change (you would replace this with actual focus detection)
-  useEffect(() => {
-    const focusCheck = setInterval(() => {
-      setFocusValue(Math.random());
-    }, 5000);
-    return () => clearInterval(focusCheck);
-  }, []);
-
-  useEffect(() => {
-    if (focusValue === 0) {
-      setIsActive(false);
-    }
-  }, [focusValue]);
-
-  return (
-    <Router>
-      <div className="font-sans">
-        <nav className="bg-amber-200 p-4">
-          <ul className="flex justify-center space-x-4">
-            <li>
-              <Link to="/" className="text-amber-800 hover:text-amber-900 flex items-center">
-                <Timer className="mr-1" /> Home
-              </Link>
-            </li>
-            <li>
-              <Link to="/scoreboard" className="text-amber-800 hover:text-amber-900 flex items-center">
-                <List className="mr-1" /> Scoreboard
-              </Link>
-            </li>
-          </ul>
-        </nav>
-
-        <Routes>
-          <Route path="/" element={<Home onToggle={toggleFocus} time={time} isActive={isActive} webcamError={webcamError} />} />
-          <Route path="/scoreboard" element={<Scoreboard scores={scores} />} />
-        </Routes>
-      </div>
-    </Router>
-  );
-};
-
-export default App;
+  
+    return (
+      <Router>
+        <div className="font-sans">
+          <nav className="bg-amber-200 p-4">
+            <ul className="flex justify-center space-x-4">
+              <li>
+                <Link to="/" className="text-amber-800 hover:text-amber-900 flex items-center">
+                  <Timer className="mr-1" /> Home
+                </Link>
+              </li>
+              <li>
+                <Link to="/scoreboard" className="text-amber-800 hover:text-amber-900 flex items-center">
+                  <List className="mr-1" /> Scoreboard
+                </Link>
+              </li>
+            </ul>
+          </nav>
+  
+          <Routes>
+            <Route 
+              path="/" 
+              element={
+                <Home 
+                  onToggle={toggleFocus} 
+                  time={time} 
+                  isActive={isActive} 
+                  webcamError={webcamError}
+                  isWarning={isWarning}
+                />
+              } 
+            />
+            <Route path="/scoreboard" element={<Scoreboard scores={scores} />} />
+          </Routes>
+        </div>
+      </Router>
+    );
+  };
+  
+  export default App;
