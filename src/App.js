@@ -41,7 +41,19 @@ const Scoreboard = ({ scores }) => (
   </div>
 );
 
-const Home = ({ onToggle, time, isActive }) => (
+// camera not working error message
+const ErrorMessage = ({ message }) => (
+  <motion.div
+    initial={{ opacity: 0, y: -50 }}
+    animate={{ opacity: 1, y: 0 }}
+    exit={{ opacity: 0, y: -50 }}
+    className="text-red-600 font-bold mt-4"
+  >
+    {message}
+  </motion.div>
+);
+
+const Home = ({ onToggle, time, isActive, webcamError}) => (
   <div className="flex flex-col items-center justify-center h-screen bg-amber-100">
     <AnimatePresence>
       {isActive && <FocusTimer time={time} />}
@@ -50,15 +62,16 @@ const Home = ({ onToggle, time, isActive }) => (
 
     {isActive && ( 
     <div className="mt-8 relative">
-    <div><canvas id="canvas"></canvas></div>
-    <div id="label-container"></div>
+      <div><canvas id="canvas"></canvas></div>
+      <div id="label-container"></div>
     </div>
     )}
 
+    <AnimatePresence>
+        {webcamError && isActive && <ErrorMessage message="Camera not working" />}
+      </AnimatePresence>
 
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
-  </div>
+</div>
 );
 
 const App = () => {
@@ -66,6 +79,8 @@ const App = () => {
   const [isActive, setIsActive] = useState(false);
   const [scores, setScores] = useState([]);
   const [focusValue, setFocusValue] = useState(1);
+  const [webcamError, setWebcamError] = useState(false);
+
 
   const URL = "https://teachablemachine.withgoogle.com/models/DpUtnaiyW/";
 
@@ -122,11 +137,12 @@ const App = () => {
         for (let i = 0; i < maxPredictions; i++) { // and class labels
             labelContainer.appendChild(document.createElement("div"));
         }
+        setWebcamError(false);
       }catch(e){
         ctx = canvas.getContext("2d");
         ctx.fillStyle = "#D1D5DB";  // A light gray color
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
+        setWebcamError(true);
       }
     }
 
@@ -230,7 +246,7 @@ const App = () => {
         </nav>
 
         <Routes>
-          <Route path="/" element={<Home onToggle={toggleFocus} time={time} isActive={isActive} />} />
+          <Route path="/" element={<Home onToggle={toggleFocus} time={time} isActive={isActive} webcamError={webcamError} />} />
           <Route path="/scoreboard" element={<Scoreboard scores={scores} />} />
         </Routes>
       </div>
